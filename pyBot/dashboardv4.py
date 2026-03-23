@@ -20,7 +20,7 @@ ORDER_LOG_PATH = "orderlog.log"
 
 # ページ設定 (1回だけ呼ぶ)
 st.set_page_config(page_title="Bot Asset Manager", layout="wide")
-st.title("🤖 Trading Bot Dashboard v4")
+st.title("🤖 Trading Bot Dashboard v4 ARB/USDC")
 
 
 # --- ログ表示用関数 ---
@@ -70,7 +70,7 @@ def load_data():
             "total_equity",
             "uni_value",
             "hl_value",
-            "eth_price",
+            "arb_price",
             "lp_delta",
             "net_delta",
             "raw_net_delta",
@@ -221,8 +221,8 @@ latest = df.iloc[-1]
 
 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 col_m1.metric("💰 総資産 (Total)", f"${latest['total_equity']:,.2f}")
-col_m2.metric("📊 Net Delta", f"{latest['net_delta']:.4f} ETH")
-col_m3.metric("📈 ETH Price", f"${latest['eth_price']:,.0f}")
+col_m2.metric("📊 Net Delta", f"{latest['net_delta']:.4f} ARB")
+col_m3.metric("📈 ARB Price", f"${latest['arb_price']:,.4f}")
 col_m4.metric("💵 Cum PnL", f"${latest['cum_pnl']:,.2f}")
 
 # リバランス検出情報表示
@@ -279,6 +279,57 @@ with col_main:
         )
         st.plotly_chart(fig_equity, use_container_width=True)
 
+        # --- Uni Value / HL Value 前回比差分 ---
+        st.subheader("Uni Value Δ (前回比)")
+        uni_diff = df_display["uni_value"].diff()
+        uni_colors = ["#00CC96" if v >= 0 else "#EF553B" for v in uni_diff.fillna(0)]
+        fig_uni_delta = go.Figure()
+        fig_uni_delta.add_trace(
+            go.Bar(
+                x=df_display["timestamp"],
+                y=uni_diff,
+                name="Uni Value Δ ($)",
+                marker_color=uni_colors,
+                opacity=0.7,
+            )
+        )
+        fig_uni_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_uni_delta.update_layout(
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=300,
+            hovermode="x unified",
+            yaxis_title="USD (Δ)",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+        )
+        st.plotly_chart(fig_uni_delta, use_container_width=True)
+
+        st.subheader("HL Value Δ (前回比)")
+        hl_diff = df_display["hl_value"].diff()
+        hl_colors = ["#00CC96" if v >= 0 else "#EF553B" for v in hl_diff.fillna(0)]
+        fig_hl_delta = go.Figure()
+        fig_hl_delta.add_trace(
+            go.Bar(
+                x=df_display["timestamp"],
+                y=hl_diff,
+                name="HL Value Δ ($)",
+                marker_color=hl_colors,
+                opacity=0.7,
+            )
+        )
+        fig_hl_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_hl_delta.update_layout(
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=300,
+            hovermode="x unified",
+            yaxis_title="USD (Δ)",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+        )
+        st.plotly_chart(fig_hl_delta, use_container_width=True)
+
     # ============ TAB 2: デルタ分析 ============
     with tab2:
         # --- 2a. デルタ推移 ---
@@ -308,22 +359,22 @@ with col_main:
             margin=dict(l=20, r=20, t=30, b=20),
             height=400,
             hovermode="x unified",
-            yaxis_title="ETH",
+            yaxis_title="ARB",
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
             ),
         )
         st.plotly_chart(fig_delta, use_container_width=True)
 
-        # --- 2b. ETH価格 vs Net Delta (2軸) ---
-        st.subheader("ETH価格 vs Net Delta")
+        # --- 2b. ARB価格 vs Net Delta (2軸) ---
+        st.subheader("ARB価格 vs Net Delta")
         fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
         fig_dual.add_trace(
             go.Scatter(
                 x=df_display["timestamp"],
-                y=df_display["eth_price"],
+                y=df_display["arb_price"],
                 mode="lines",
-                name="ETH Price ($)",
+                name="ARB Price ($)",
                 line=dict(color="#FFA15A", width=2),
             ),
             secondary_y=False,
@@ -333,7 +384,7 @@ with col_main:
                 x=df_display["timestamp"],
                 y=df_display["net_delta"],
                 mode="lines",
-                name="Net Delta (ETH)",
+                name="Net Delta (ARB)",
                 line=dict(color="#636EFA", width=1.5),
             ),
             secondary_y=True,
@@ -349,8 +400,8 @@ with col_main:
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
             ),
         )
-        fig_dual.update_yaxes(title_text="ETH Price ($)", secondary_y=False)
-        fig_dual.update_yaxes(title_text="Net Delta (ETH)", secondary_y=True)
+        fig_dual.update_yaxes(title_text="ARB Price ($)", secondary_y=False)
+        fig_dual.update_yaxes(title_text="Net Delta (ARB)", secondary_y=True)
         st.plotly_chart(fig_dual, use_container_width=True)
 
     # ============ TAB 3: PnL分析 ============
@@ -463,7 +514,7 @@ with col_main:
                 "Total Equity",
                 "Uniswap Value",
                 "Hyperliquid Value",
-                "ETH Price",
+                "ARB Price",
                 "LP Delta",
                 "Net Delta",
                 "Raw Net Delta",
@@ -475,10 +526,10 @@ with col_main:
                 f"${latest['total_equity']:,.2f}",
                 f"${latest['uni_value']:,.2f}",
                 f"${latest['hl_value']:,.2f}",
-                f"${latest['eth_price']:,.2f}",
-                f"{latest['lp_delta']:.6f} ETH",
-                f"{latest['net_delta']:.6f} ETH",
-                f"{latest['raw_net_delta']:.6f} ETH",
+                f"${latest['arb_price']:,.4f}",
+                f"{latest['lp_delta']:.6f} ARB",
+                f"{latest['net_delta']:.6f} ARB",
+                f"{latest['raw_net_delta']:.6f} ARB",
                 f"${latest['funding_fees']:,.2f}",
                 f"${latest['step_pnl']:,.4f}",
                 f"${latest['cum_pnl']:,.2f}",
@@ -509,7 +560,7 @@ with col_main:
                         "変動後 Equity ($)": f"{row['total_equity']:,.2f}",
                         "変動額 ($)": f"{change:+,.2f}",
                         "変動率 (%)": f"{change_pct:+.2f}%",
-                        "ETH Price ($)": f"{row['eth_price']:,.0f}",
+                        "ARB Price ($)": f"{row['arb_price']:,.4f}",
                     }
                 )
 
