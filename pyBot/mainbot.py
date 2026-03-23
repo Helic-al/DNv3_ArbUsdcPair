@@ -35,10 +35,8 @@ alchemyKey = os.environ.get("ALCHEMY_KEY")  # 秘密鍵
 TARGET_TOKEN_ID = int(
     os.environ.get("NFT_TOKEN", 0)
 )  # ★ここにUniswapのToken IDを入れる
-THRESHOLD = 0.13  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる
-ALLOWABLE_RISK_PCT = 0.050  # 運用資金から許容するズレ(デルタETH)の割合
-TARGET_RATIO = 0.5  # しきい値の何割までデルタを打ち消すか
-MAX_RETRY = 3  # 指値注文のリトライ回数
+THRESHOLD = 3000  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる # TODO: ARB用にサイズを書き換える
+ALLOWABLE_RISK_PCT = 0.075  # 運用資金から許容するズレ(デルタarb)の割合
 RECORD_TIME = 300  # dynamoDBへの記録間隔(秒)
 
 # aws設定
@@ -49,12 +47,12 @@ REGION_NAME = "ap-northeast-1"
 RPC_URL = os.environ.get("ALCHEMY_RPC_URL")
 HL_BASE_URL = constants.MAINNET_API_URL
 
-WETH_ADDRESS = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"
-USDC_ADDRESS = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+ARB_ADDRESS = "0x912CE59144191C1204E64559FE8253a0e49E6548"  # arbアドレスに差し替え
+USDC_ADDRESS = "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8"  # USDC.eアドレスに差し替え
 
 # --- Uniswapコントラクト設定 (Arbitrum) ---
 # 1. Pool Contract (価格取得用)
-POOL_ADDRESS = "0xC6962004f452bE9203591991D15f6b388e09E8D0"
+POOL_ADDRESS = "0xcDa53B1F66614552F834cEeF361A8D12a0B8DaD8"
 POOL_ABI = '[{"inputs":[],"name":"slot0","outputs":[{"internalType":"uint160","name":"sqrtPriceX96","type":"uint160"},{"internalType":"int24","name":"tick","type":"int24"},{"internalType":"uint16","name":"observationIndex","type":"uint16"},{"internalType":"uint16","name":"observationCardinality","type":"uint16"},{"internalType":"uint16","name":"observationCardinalityNext","type":"uint16"},{"internalType":"uint8","name":"feeProtocol","type":"uint8"},{"internalType":"bool","name":"unlocked","type":"bool"}],"stateMutability":"view","type":"function"}]'
 
 # 2. Position Manager (流動性Lとレンジ取得用)
@@ -125,8 +123,8 @@ def sendDiscordReport(equity_data):
                     "inline": True,
                 },
                 {
-                    "name": "📈 ETH Price",
-                    "value": f"${equity_data['eth_price']:.2f}",
+                    "name": "📈 ARB Price",
+                    "value": f"${equity_data['arb_price']:.2f}",
                     "inline": True,
                 },
                 {
@@ -146,17 +144,17 @@ def sendDiscordReport(equity_data):
                 },
                 {
                     "name": "📐 LP Delta",
-                    "value": f"{equity_data.get('lp_delta', 0):.4f} ETH",
+                    "value": f"{equity_data.get('lp_delta', 0):.4f} arb",
                     "inline": True,
                 },
                 {
                     "name": "🔄 Net Delta",
-                    "value": f"{equity_data.get('net_delta', 0):.4f} ETH",
+                    "value": f"{equity_data.get('net_delta', 0):.4f} arb",
                     "inline": True,
                 },
                 {
                     "name": "📏 Raw Net Delta",
-                    "value": f"{equity_data.get('raw_net_delta', 0):.4f} ETH",
+                    "value": f"{equity_data.get('raw_net_delta', 0):.4f} arb",
                     "inline": True,
                 },
                 {
@@ -171,7 +169,7 @@ def sendDiscordReport(equity_data):
                 },
             ],
             "timestamp": datetime.datetime.utcnow().isoformat(),
-            "footer": {"text": "Delta Neutral Bot V4"},
+            "footer": {"text": "Delta Neutral Bot"},
         }
         payload = {"embeds": [embed]}
         requests.post(DISCORD_URL, json=payload)
@@ -185,7 +183,7 @@ def get_price_from_sqrt(sqrt_pa):
 
     # 2. デシマル調整を行う
     # 計算式: price_raw * 10^(Token0_Decimals - Token1_Decimals)
-    # WETH(18) - USDC(6) = 12桁の補正
+    # Warb(18) - USDC(6) = 12桁の補正
     decimal_shift = 10 ** (18 - 6)  # つまり 1e12
 
     price_usd = price_raw * decimal_shift
@@ -237,7 +235,7 @@ class DeltaPnLTracker:
     def __init__(self):
         self.cumulative_pnl = 0.0  # 累積損益 (ドル)
         self.last_price = None  # 前回の価格
-        self.last_net_delta = 0.0  # 前回のデルタ (ETH枚数)
+        self.last_net_delta = 0.0  # 前回のデルタ (arb枚数)
 
     def update(self, current_price, current_net_delta):
         """
@@ -273,7 +271,7 @@ class SafeRealBot:
         self.w3 = Web3(Web3.HTTPProvider(RPC_URL))
         self.pool_contract = self.w3.eth.contract(address=POOL_ADDRESS, abi=POOL_ABI)
         self.nfpm_contract = self.w3.eth.contract(address=NFPM_ADDRESS, abi=NFPM_ABI)
-        self.coin = "ETH"
+        self.coin = "ARB"
 
         self.account = eth_account.Account.from_key(HL_PRIVATE_KEY)
         self.exchange = Exchange(
@@ -305,7 +303,7 @@ class SafeRealBot:
 
         # CEX価格取得用ヘルパ関数
 
-    def get_cex_price(self, coin="ETH"):
+    def get_cex_price(self, coin="ARB"):
         # Hyperliquidから全銘柄の現在価格(Mark Price)を取得
         while True:
             mids = self.info.all_mids()
@@ -329,7 +327,7 @@ class SafeRealBot:
             # 純粋なルート価格 (√Token1 / √Token0)
             sqrtP = sqrtPriceX96 / Q96
 
-            # 表示用の価格 (USDCは6桁、ETHは18桁なので 10^12 で割る)
+            # 表示用の価格 (USDCは6桁、arbは18桁なので 10^12 で割る)
             # Price = (sqrtP^2) / (10^(18-6))
             human_price = (sqrtP**2) * 1e12
 
@@ -350,9 +348,9 @@ class SafeRealBot:
             user_state = self.info.user_state(MAIN_ACCOUNT_ADDRESS)
             current_hedge = 0.0
 
-            # AssetPositionsの中からETHを探す
+            # AssetPositionsの中からarbを探す
             for pos in user_state["assetPositions"]:
-                if pos["position"]["coin"] == "ETH":
+                if pos["position"]["coin"] == "ARB":
                     current_hedge = float(pos["position"]["szi"])
                     break
 
@@ -386,20 +384,20 @@ class SafeRealBot:
             return None
 
     def get_token_amounts(self, liquidity, sqrtP, tick_lower, tick_upper):
-        """流動性Lと価格から、現在のETHとUSDCの保有量を計算する"""
+        """流動性Lと価格から、現在のARBとUSDCの保有量を計算する"""
         # Q96 = 2**96
 
         sqrtPa = 1.0001 ** (tick_lower / 2)
         sqrtPb = 1.0001 ** (tick_upper / 2)
 
-        amount0 = 0.0  # ETH
-        amount1 = 0.0  # USDC
+        amount0 = 0.0  # ARB
+        amount1 = 0.0  # USDC.e
 
-        # 1. 価格がレンジより下 (全額ETH)
+        # 1. 価格がレンジより下 (全額ARB)
         if sqrtP < sqrtPa:
             amount0 = liquidity * (1 / sqrtPa - 1 / sqrtPb)
             amount1 = 0.0
-        # 2. 価格がレンジより上 (全額USDC)
+        # 2. 価格がレンジより上 (全額USDC.e)
         elif sqrtP >= sqrtPb:
             amount0 = 0.0
             amount1 = liquidity * (sqrtPb - sqrtPa)
@@ -416,9 +414,9 @@ class SafeRealBot:
         if allowedRiskUSD < 15:
             allowedRiskUSD = 15
 
-        thresholdETH = allowedRiskUSD / currentPrice
+        thresholdARB = allowedRiskUSD / currentPrice
 
-        return thresholdETH
+        return thresholdARB
 
     def get_total_equity(self):
         """UniswapとHyperliquidの合計資産価値(USD)を計算"""
@@ -428,8 +426,8 @@ class SafeRealBot:
             if data is None or data["L"] == 0:
                 return None
 
-            # 現在のETH/USDC量
-            eth_amount, usdc_amount = self.get_token_amounts(
+            # 現在のARB/USDC量
+            arb_amount, usdc_amount = self.get_token_amounts(
                 data["L"], data["sqrtP_raw"], data["tickLower"], data["tickUpper"]
             )
 
@@ -445,17 +443,17 @@ class SafeRealBot:
             # これが「流動性の中身以外」に溜まっている最新の手数料
             current_fees = self.nfpm_contract.functions.collect(collect_params).call()
 
-            fees_eth = current_fees[0] / 1e18
+            fees_arb = current_fees[0] / 1e18
             fees_usdc = current_fees[1] / 1e6
 
             # Uniswap合計価値 ($)
-            # (ETH量 + 未回収ETH) * 価格 + (USDC量 + 未回収USDC)
-            uni_value_usd = (eth_amount + fees_eth) * data["price"] + (
+            # (arb量 + 未回収arb) * 価格 + (USDC量 + 未回収USDC)
+            uni_value_usd = (arb_amount + fees_arb) * data["price"] + (
                 usdc_amount + fees_usdc
             )
 
             # 現在の報酬手数料を独立して算出
-            funding_fees = fees_eth * data["price"] + fees_usdc
+            funding_fees = fees_arb * data["price"] + fees_usdc
 
             # --- 2. Hyperliquid側の資産 ---
             # main_address (資金が入っている口座) の情報を取得
@@ -484,18 +482,14 @@ class SafeRealBot:
             # total_equity = uni_value_usd + hl_value_usd
 
             try:
-                # ① 生のETH残高 (ガス代用など / 18 decimals)
-                eth_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
-                eth_wallet = eth_wei / (10**18)
+                # ① 生のarb残高 (ガス代用など / 18 decimals)
+                arb_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
+                arb_wallet = arb_wei / (10**18)
 
-                # ② WETH残高 (18 decimals)
-                weth_contract = self.w3.eth.contract(
-                    address=WETH_ADDRESS, abi=ERC20_ABI
-                )
-                weth_wei = weth_contract.functions.balanceOf(
-                    MAIN_ACCOUNT_ADDRESS
-                ).call()
-                weth_wallet = weth_wei / (10**18)
+                # ② Warb残高 (18 decimals)
+                arb_contract = self.w3.eth.contract(address=ARB_ADDRESS, abi=ERC20_ABI)
+                arb_wei = arb_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
+                arb_wallet = arb_wei / (10**18)
 
                 # ③ USDC残高 (ArbitrumネイティブUSDCは 6 decimals)
                 usdc_contract = self.w3.eth.contract(
@@ -506,10 +500,8 @@ class SafeRealBot:
                 ).call()
                 usdc_wallet = usdc_mwei / (10**6)
 
-                # ウォレット内の総資産をUSD換算（ETHとWETHはCEX価格を掛ける）
-                wallet_value_usd = (eth_wallet + weth_wallet) * data[
-                    "price"
-                ] + usdc_wallet
+                # ウォレット内の総資産をUSD換算（arbとWarbはCEX価格を掛ける）
+                wallet_value_usd = arb_wallet * data["price"] + usdc_wallet
 
             except Exception as e:
                 log.error(f"ウォレット残高の取得に失敗しました: {e}")
@@ -521,7 +513,7 @@ class SafeRealBot:
             total_equity = uni_value_usd + hl_value_usd + wallet_value_usd
 
             # 総資産計算の際にショートのスレッショルドを再計算
-            self.ETHthreshold = self.calcThreshold(
+            self.ARBthreshold = self.calcThreshold(
                 total_equity=total_equity, currentPrice=data["price"]
             )
 
@@ -531,44 +523,39 @@ class SafeRealBot:
                 "hl_value": hl_value_usd,
                 "funding_fees": funding_fees,
                 "total_equity": total_equity,
-                "eth_price": data["price"],
+                "arb_price": data["price"],
             }
 
         except Exception as e:
             log.info(f"Equity Calc Error: {e}")
             return None
 
-    def getWalletEth(self):
+    def getWalletarb(self):
         try:
-            # ① 生のETH残高 (ガス代用など / 18 decimals)
-            eth_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
-            eth_wallet = eth_wei / (10**18)
+            # ① 生のarb残高 (ガス代用など / 18 decimals)
+            arb_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
+            arb_wallet = arb_wei / (10**18)
 
-            # ② WETH残高 (18 decimals)
-            weth_contract = self.w3.eth.contract(address=WETH_ADDRESS, abi=ERC20_ABI)
-            weth_wei = weth_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
-            weth_wallet = weth_wei / (10**18)
-
-            return weth_wallet + eth_wallet
+            return arb_wallet
 
         except Exception as e:
             log.error(f"ウォレット残高の取得に失敗しました: {e}")
             return 0
 
-    def getWalletWethAndUsdc(self):
+    def getWalletArbAndUsdc(self):
         try:
-            # WETHの枚数を取得
-            # ② WETH残高 (18 decimals)
-            weth_contract = self.w3.eth.contract(address=WETH_ADDRESS, abi=ERC20_ABI)
-            weth_wei = weth_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
-            weth_wallet = weth_wei / (10**18)
+            # Warbの枚数を取得
+            # ② Warb残高 (18 decimals)
+            arb_contract = self.w3.eth.contract(address=ARB_ADDRESS, abi=ERC20_ABI)
+            arb_wei = arb_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
+            arb_wallet = arb_wei / (10**18)
 
             # ③ USDC残高 (ArbitrumネイティブUSDCは 6 decimals)
             usdc_contract = self.w3.eth.contract(address=USDC_ADDRESS, abi=ERC20_ABI)
-            usdc_mwei = usdc_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
-            usdc_wallet = usdc_mwei / (10**6)
+            usdc_wei = usdc_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
+            usdc_wallet = usdc_wei / (10**6)
 
-            return weth_wallet, usdc_wallet
+            return arb_wallet, usdc_wallet
 
         except Exception as e:
             log.error(f"ウォレット残高の取得に失敗しました: {e}")
@@ -597,8 +584,8 @@ class SafeRealBot:
 
     def calcRawDelta(self, currentPrice):
         # 定数定義
-        DECIMALS_ETH = 1e18
-        # Uniswap V3 公式式によるETH保有量計算 (Wei単位)
+        DECIMALS_arb = 1e18
+        # Uniswap V3 公式式によるarb保有量計算 (Wei単位)
         raw_amount0_wei = 0.0
 
         sp = get_sqrt_from_price(currentPrice)
@@ -608,45 +595,45 @@ class SafeRealBot:
         hedge_pos = self.hedge_pos
 
         if sp < sqrtPa:
-            # 現在価格 < レンジ (全額ETH)
+            # 現在価格 < レンジ (全額arb)
             # amount0 = L * (1/√Pa - 1/√Pb)
             raw_amount0_wei = L * (1 / sqrtPa - 1 / sqrtPb)
 
         elif sp >= sqrtPb:
-            # 現在価格 > レンジ (全額USDC, ETHは0)
+            # 現在価格 > レンジ (全額USDC, arbは0)
             raw_amount0_wei = 0.0
         else:
             # レンジ内 (混合)
             # amount0 = L * (1/√P - 1/√Pb)
             raw_amount0_wei = L * (1 / sp - 1 / sqrtPb)
 
-        raw_net_delta = raw_amount0_wei / DECIMALS_ETH + hedge_pos
+        raw_net_delta = raw_amount0_wei / DECIMALS_arb + hedge_pos
 
         return raw_net_delta
 
-    def execute_trade(self, amount_eth):
+    def execute_trade(self, amount_arb):
         """HLへ発注"""
-        is_buy = amount_eth > 0
-        sz = round(abs(amount_eth), 4)
+        is_buy = amount_arb > 0
+        sz = round(abs(amount_arb), 1)
 
         # --- 🚨 安全装置 (Failsafe) ---
-        # 「最大でも 2 ETH までしか発注しない」という制限をかける
+        # 「最大でも 2 arb までしか発注しない」という制限をかける
         # 資産規模に合わせて調整してください
-        MAX_TRADE_SIZE = 2.0
+        MAX_TRADE_SIZE = 35000
 
         if sz == 0:
             return
 
         if sz > MAX_TRADE_SIZE:
             log.info(
-                f"\n🛑 危険: 発注サイズ({sz} ETH)が上限({MAX_TRADE_SIZE} ETH)を超えています！"
+                f"\n🛑 危険: 発注サイズ({sz} arb)が上限({MAX_TRADE_SIZE} arb)を超えています！"
             )
             log.info("計算ロジックを確認してください。Botを停止します。")
             sendDiscord("計算ロジックを確認してください。Botを停止します。")
             exit()  # プログラムを強制終了
 
-        log.info(f"🚀 ORDER: {'BUY' if is_buy else 'SELL'} {sz} ETH")
-        sendDiscord(f"🚀 ORDER: {'BUY' if is_buy else 'SELL'} {sz} ETH")
+        log.info(f"🚀 ORDER: {'BUY' if is_buy else 'SELL'} {sz} arb")
+        sendDiscord(f"🚀 ORDER: {'BUY' if is_buy else 'SELL'} {sz} arb")
         try:
             # Hyperliquid SDKの成行注文関数
             market_result = self.exchange.market_open(self.coin, is_buy, sz=sz)
@@ -659,19 +646,19 @@ class SafeRealBot:
             sendDiscord(f"❌ 成行注文も失敗しました (致命的エラー): {e}")
             return "FAILED"
         # try:
-        # # name="ETH" に修正済み
+        # # name="arb" に修正済み
         # resp = self.exchange.market_open(
-        #     name="ETH", is_buy=is_buy, sz=sz, px=None, slippage=0.01
+        #     name="arb", is_buy=is_buy, sz=sz, px=None, slippage=0.01
         # )
         # # レスポンスの中身を簡易表示
         # status = resp["status"] if "status" in resp else resp
         # log.info(f"   Response: {status}")
         # manager.execute_smart_hedge(
         #     size=sz,
-        #     panic_size=panic_amount_eth,
+        #     panic_size=panic_amount_arb,
         #     is_buy=is_buy,
         #     calcRawDelta=self.calcRawDelta,
-        #     panic_threshold=2 * self.ETHthreshold,
+        #     panic_threshold=2 * self.arbthreshold,
         #     max_retries=MAX_RETRY,
         #     wait_seconds=30,
         # )
@@ -687,7 +674,7 @@ class SafeRealBot:
     #         log.info("Delta threshold met, cleaning up open orders...")
     #         sendDiscord("Delta threshold met, cleaning up open orders...")
     #         for order in open_orders:
-    #             self.exchange.cancel("ETH", order["oid"])
+    #             self.exchange.cancel("arb", order["oid"])
     #             log.info(f"canceled order {order['oid']}")
     #         log.info("all open orders cleaned up. \n")
     #         sendDiscord("all open orders cleaned up. \n")
@@ -708,7 +695,7 @@ class SafeRealBot:
                 "step_pnl": format_decimal(equity_data["step_pnl"]),
                 "cum_pnl": format_decimal(equity_data["cum_pnl"]),
                 "total_equity": format_decimal(equity_data["total_equity"]),
-                "eth_price": format_decimal(equity_data["eth_price"]),
+                "arb_price": format_decimal(equity_data["arb_price"]),
                 # 存在しない場合0デフォルトもこの関数なら安全
                 "lp_delta": format_decimal(equity_data.get("lp_delta", 0)),
                 "net_delta": format_decimal(equity_data.get("net_delta", 0)),
@@ -728,7 +715,7 @@ class SafeRealBot:
         log.info("🛡️ Safe Bot Started. Waiting for liquidity...")
         last_log_time = datetime.datetime.now()
         # 定数定義
-        DECIMALS_ETH = 1e18
+        DECIMALS_arb = 1e18
         oorThreshold = 0.06
 
         # リポジションを行うクラスのインスタンス作成
@@ -738,12 +725,14 @@ class SafeRealBot:
             tryCount = 1
             while tryCount < 4:
                 # TODO:プールのリポジションを実行
+                sendDiscord("reposition required. stopping...")
+                exit()
                 # TODO: get_token_amountsは流動性Lから枚数を計算しているのでノーポジションからの作成の際には使用できない
                 # そのためwalletから直接取得した枚数と、hyperliquidから取得した価格を渡す必要がある
-                wethAmount, usdcAmount = self.getWalletWethAndUsdc()
+                arbAmount, usdcAmount = self.getWalletArbAndUsdc()
                 currentPrice = self.get_cex_price()
                 response = pr.executeReposition(
-                    RPC_URL, currentPrice, wethAmount, usdcAmount, False
+                    RPC_URL, currentPrice, arbAmount, usdcAmount, False
                 )
 
                 if response:
@@ -819,17 +808,17 @@ class SafeRealBot:
             # # トレンド判断用にemaを記録
             # ePrice = emaPrice.update(data["price"])
 
-            # Uniswap V3 公式式によるETH保有量計算 (Wei単位)
+            # Uniswap V3 公式式によるarb保有量計算 (Wei単位)
             amount0_wei = 0.0
 
             if sp < sqrtPa:
-                # 現在価格 < レンジ (全額ETH)
+                # 現在価格 < レンジ (全額arb)
                 # amount0 = L * (1/√Pa - 1/√Pb)
                 amount0_wei = L * (1 / sqrtPa - 1 / sqrtPb)
                 raw_amount0_wei = amount0_wei
 
             elif sp >= sqrtPb:
-                # 現在価格 > レンジ (全額USDC, ETHは0)
+                # 現在価格 > レンジ (全額USDC, arbは0)
                 amount0_wei = 0.0
                 raw_amount0_wei = amount0_wei
             else:
@@ -838,23 +827,23 @@ class SafeRealBot:
                 amount0_wei = L * (1 / smoothedSP - 1 / sqrtPb)
                 raw_amount0_wei = L * (1 / sp - 1 / sqrtPb)
 
-            # Wei -> ETH (10^18) に変換
-            lp_delta_eth = amount0_wei / DECIMALS_ETH
-            raw_lp_delra_eth = raw_amount0_wei / DECIMALS_ETH
+            # Wei -> arb (10^18) に変換
+            lp_delta_arb = amount0_wei / DECIMALS_arb
+            raw_lp_delra_arb = raw_amount0_wei / DECIMALS_arb
 
-            # 追加:walletのeth残高もヘッジする
-            walletEth = self.getWalletEth()
+            # 追加:walletのarb残高もヘッジする
+            walletarb = self.getWalletarb()
 
-            # ネットデルタ (LPのETH + ヘッジのETH + walletのETH)
-            net_delta = lp_delta_eth + data["hedge_pos"] + walletEth
-            raw_net_delta = raw_lp_delra_eth + data["hedge_pos"] + walletEth
+            # ネットデルタ (LPのarb + ヘッジのarb + walletのarb)
+            net_delta = lp_delta_arb + data["hedge_pos"] + walletarb
+            raw_net_delta = raw_lp_delra_arb + data["hedge_pos"] + walletarb
 
             # --- 表示用データの作成 ---
             current_price = data["price"]
-            lp_value_usd = lp_delta_eth * current_price  # ETH枚数 * ドル価格
+            lp_value_usd = lp_delta_arb * current_price  # arb枚数 * ドル価格
 
             log.info(
-                f"\r Price:${current_price:.1f} | CurrentThreshold:{self.ETHthreshold:.3f} | LP:{lp_delta_eth:.3f}ETH (${lp_value_usd:.0f}) | Hedge:{data['hedge_pos']:.3f} | Net:{net_delta:.4f} \n"
+                f"\r Price:${current_price:.5f} | CurrentThreshold:{self.ARBthreshold:.3f} | LP:{lp_delta_arb:.3f}arb (${lp_value_usd:.0f}) | Hedge:{data['hedge_pos']:.3f} | Net:{net_delta:.4f} \n"
             )
 
             # 6_4 トレード済みの場合Trueとするフラグ、各ループ判定前にfalseで初期化
@@ -863,7 +852,7 @@ class SafeRealBot:
             # クールタイム判定用の時刻を取得
             currentTime = time.time()
 
-            if abs(net_delta) > self.ETHthreshold:
+            if abs(net_delta) > self.ARBthreshold:
                 elapsedTime = currentTime - self.cooltime
 
                 if self.firstBreachTime is None:
@@ -895,9 +884,9 @@ class SafeRealBot:
             else:
                 self.firstBreachTime = None  # 範囲内に戻ったらリセット
                 # if net_delta > 0:
-                #     target_delta = self.ETHthreshold * TARGET_RATIO
+                #     target_delta = self.arbthreshold * TARGET_RATIO
                 # else:
-                #     target_delta = -1 * (self.ETHthreshold * TARGET_RATIO)
+                #     target_delta = -1 * (self.arbthreshold * TARGET_RATIO)
 
                 # hedgeSize = -1 * (net_delta - target_delta)
                 # self.execute_trade(hedgeSize, manager=manager)
@@ -905,8 +894,8 @@ class SafeRealBot:
 
             # v6_2 緊急脱出処理
             if (
-                abs(raw_net_delta) < 3.3 * self.ETHthreshold
-                and abs(raw_net_delta) > 1.5 * self.ETHthreshold
+                abs(raw_net_delta) < 3.3 * self.ARBthreshold
+                and abs(raw_net_delta) > 1.5 * self.ARBthreshold
                 and (not hasAlreadyTraded)
             ):
                 if self.BailoutBreachTime is None:
@@ -943,6 +932,10 @@ class SafeRealBot:
 
                 while tryCount < 4:
                     # TODO:プールのリポジションを実行
+                    sendDiscord("reposition required. stopping...")
+                    exit()
+                    ######################################################
+
                     tokenAmounts = self.get_token_amounts(
                         data["L"],
                         data["sqrtP_raw"],
@@ -983,7 +976,7 @@ class SafeRealBot:
 
                     # ★追加: デルタ情報を辞書に追加
                     equity["price_ema"] = emaPrice.smoothed_value
-                    equity["lp_delta"] = lp_delta_eth
+                    equity["lp_delta"] = lp_delta_arb
                     equity["net_delta"] = net_delta
                     equity["raw_net_delta"] = raw_net_delta
                     equity["step_pnl"] = step_pnl
@@ -999,5 +992,5 @@ class SafeRealBot:
 if __name__ == "__main__":
     bot = SafeRealBot()
     # スレッショルドの初期値を与えておく
-    bot.ETHthreshold = THRESHOLD
+    bot.ARBthreshold = THRESHOLD
     bot.run()
