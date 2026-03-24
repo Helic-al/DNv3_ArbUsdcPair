@@ -20,7 +20,7 @@ ORDER_LOG_PATH = "orderlog.log"
 
 # ページ設定 (1回だけ呼ぶ)
 st.set_page_config(page_title="Bot Asset Manager", layout="wide")
-st.title("🤖 Trading Bot Dashboard v4 ARB/USDC")
+st.title("🤖 Trading Bot Dashboard v4 ARB/USDCs")
 
 
 # --- ログ表示用関数 ---
@@ -279,56 +279,55 @@ with col_main:
         )
         st.plotly_chart(fig_equity, use_container_width=True)
 
-        # --- Uni Value / HL Value 前回比差分 ---
-        st.subheader("Uni Value Δ (前回比)")
+        # --- Uni Value / HL Value 前回比差分 (統合グラフ) ---
+        st.subheader("Uni & HL Value Δ (前回比)")
         uni_diff = df_display["uni_value"].diff()
-        uni_colors = ["#00CC96" if v >= 0 else "#EF553B" for v in uni_diff.fillna(0)]
-        fig_uni_delta = go.Figure()
-        fig_uni_delta.add_trace(
+        hl_diff = df_display["hl_value"].diff()
+        total_diff = uni_diff + hl_diff
+
+        fig_combined_delta = go.Figure()
+        # Uni Value Δ 棒グラフ
+        fig_combined_delta.add_trace(
             go.Bar(
                 x=df_display["timestamp"],
                 y=uni_diff,
                 name="Uni Value Δ ($)",
-                marker_color=uni_colors,
+                marker_color="#636EFA",
                 opacity=0.7,
             )
         )
-        fig_uni_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-        fig_uni_delta.update_layout(
-            margin=dict(l=20, r=20, t=30, b=20),
-            height=300,
-            hovermode="x unified",
-            yaxis_title="USD (Δ)",
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-            ),
-        )
-        st.plotly_chart(fig_uni_delta, use_container_width=True)
-
-        st.subheader("HL Value Δ (前回比)")
-        hl_diff = df_display["hl_value"].diff()
-        hl_colors = ["#00CC96" if v >= 0 else "#EF553B" for v in hl_diff.fillna(0)]
-        fig_hl_delta = go.Figure()
-        fig_hl_delta.add_trace(
+        # HL Value Δ 棒グラフ
+        fig_combined_delta.add_trace(
             go.Bar(
                 x=df_display["timestamp"],
                 y=hl_diff,
                 name="HL Value Δ ($)",
-                marker_color=hl_colors,
+                marker_color="#FFA15A",
                 opacity=0.7,
             )
         )
-        fig_hl_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-        fig_hl_delta.update_layout(
+        # 合計 (Uni + HL) 折れ線グラフ
+        fig_combined_delta.add_trace(
+            go.Scatter(
+                x=df_display["timestamp"],
+                y=total_diff,
+                mode="lines",
+                name="合計 Δ ($)",
+                line=dict(color="#00CC96", width=2.5),
+            )
+        )
+        fig_combined_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_combined_delta.update_layout(
+            barmode="group",
             margin=dict(l=20, r=20, t=30, b=20),
-            height=300,
+            height=350,
             hovermode="x unified",
             yaxis_title="USD (Δ)",
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
             ),
         )
-        st.plotly_chart(fig_hl_delta, use_container_width=True)
+        st.plotly_chart(fig_combined_delta, use_container_width=True)
 
     # ============ TAB 2: デルタ分析 ============
     with tab2:

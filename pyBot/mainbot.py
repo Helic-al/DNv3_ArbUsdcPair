@@ -35,7 +35,7 @@ alchemyKey = os.environ.get("ALCHEMY_KEY")  # 秘密鍵
 TARGET_TOKEN_ID = int(
     os.environ.get("NFT_TOKEN", 0)
 )  # ★ここにUniswapのToken IDを入れる
-THRESHOLD = 3000  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる # TODO: ARB用にサイズを書き換える
+THRESHOLD = 3500  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる # TODO: ARB用にサイズを書き換える
 ALLOWABLE_RISK_PCT = 0.075  # 運用資金から許容するズレ(デルタarb)の割合
 RECORD_TIME = 300  # dynamoDBへの記録間隔(秒)
 
@@ -124,7 +124,7 @@ def sendDiscordReport(equity_data):
                 },
                 {
                     "name": "📈 ARB Price",
-                    "value": f"${equity_data['arb_price']:.2f}",
+                    "value": f"${equity_data['arb_price']:.5f}",
                     "inline": True,
                 },
                 {
@@ -726,7 +726,6 @@ class SafeRealBot:
             while tryCount < 4:
                 # TODO:プールのリポジションを実行
                 sendDiscord("reposition required. stopping...")
-                exit()
                 # TODO: get_token_amountsは流動性Lから枚数を計算しているのでノーポジションからの作成の際には使用できない
                 # そのためwalletから直接取得した枚数と、hyperliquidから取得した価格を渡す必要がある
                 arbAmount, usdcAmount = self.getWalletArbAndUsdc()
@@ -933,8 +932,6 @@ class SafeRealBot:
                 while tryCount < 4:
                     # TODO:プールのリポジションを実行
                     sendDiscord("reposition required. stopping...")
-                    exit()
-                    ######################################################
 
                     tokenAmounts = self.get_token_amounts(
                         data["L"],

@@ -76,7 +76,7 @@ class PoolRepositioner:
         tickSpacing = 10
         currentTick = int(math.log(currentPrice / 1e12, 1.0001))
 
-        halfWidthTicks = 700  # 7.0%
+        halfWidthTicks = 1000  # 10%
 
         newTickLower = currentTick - halfWidthTicks
         newTickUpper = currentTick + halfWidthTicks
@@ -86,7 +86,7 @@ class PoolRepositioner:
 
         return (currentTick, newTickLower, newTickUpper)
 
-    def calc_approx_swap_amount(self, current_price, total_weth_amt, total_usdc_amt):
+    def calc_approx_swap_amount(self, current_price, total_arb_amt, total_usdc_amt):
         """
         V3用シンプル版：手持ちの総資産（プール内+ウォレット）を50:50にするスワップ量を計算
 
@@ -97,10 +97,10 @@ class PoolRepositioner:
         """
 
         # 1. 現在の資産のUSD価値を計算する
-        weth_value_in_usd = total_weth_amt * current_price
+        arb_value_in_usd = total_arb_amt * current_price
         usdc_value_in_usd = total_usdc_amt
 
-        total_value = weth_value_in_usd + usdc_value_in_usd
+        total_value = arb_value_in_usd + usdc_value_in_usd
         target_value = total_value / 2.0  # 理想は半々(50:50)
 
         # デフォルトはスワップなし
@@ -108,15 +108,15 @@ class PoolRepositioner:
         swap_amount_wei = 0
 
         # 2. WETHが多すぎる場合 -> WETHを売る (WETH -> USDC)
-        if weth_value_in_usd > target_value:
-            excess_usd = weth_value_in_usd - target_value
+        if arb_value_in_usd > target_value:
+            excess_usd = arb_value_in_usd - target_value
 
             # 💡 差額が1ドル未満ならガス代の無駄なのでスワップしない
             if excess_usd > 1.0:
-                weth_to_sell = excess_usd / current_price
+                arb_to_sell = excess_usd / current_price
                 swap_zero_for_one = "true"
                 # WETHは18桁なので 10**18 を掛ける
-                swap_amount_wei = int(weth_to_sell * (10**18))
+                swap_amount_wei = int(arb_to_sell * (10**18))
 
         # 3. USDCが多すぎる場合 -> USDCを売る (USDC -> WETH)
         elif usdc_value_in_usd > target_value:
@@ -135,7 +135,7 @@ class PoolRepositioner:
         self,
         rpcURL,
         inCurrentPrice,
-        inTotalWETHamount,
+        inTotalARBamount,
         inTotalUSDCamount,
         inSkipWithdraw,
     ):
@@ -156,7 +156,7 @@ class PoolRepositioner:
 
         # 概算スワップ料を計算
         swap_zero_for_one, swap_amount = self.calc_approx_swap_amount(
-            inCurrentPrice, inTotalWETHamount, inTotalUSDCamount
+            inCurrentPrice, inTotalARBamount, inTotalUSDCamount
         )
 
         self.log.info(
@@ -165,7 +165,7 @@ class PoolRepositioner:
 
         # 環境変数の設定
 
-        # TODO: v3プールリポジション時にコントラクトに渡す環境変数は以下
+        # v3プールリポジション時にコントラクトに渡す環境変数は以下
         # PRIVATE_KEY, SKIP_WITHDRAW, OLD_TOKEN_ID,
         # SWAP_AMOUNT, ZERO_FOR_ONE, NEW_TICK_LOWER, NEW_TICK_UPPER
 

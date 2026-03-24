@@ -40,8 +40,8 @@ interface INonfungiblePositionManager {
 contract Reposition is Script {
     INonfungiblePositionManager constant NFPM = INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
     ISwapRouter constant ROUTER = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-    address constant WETH = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
-    address constant USDC = 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;
+    address constant ARB = 0x912CE59144191C1204E64559FE8253a0e49E6548;
+    address constant USDC = 0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8;
     uint24 constant POOL_FEE = 500;
 
     function run() external {
@@ -104,8 +104,8 @@ contract Reposition is Script {
 
     function _swap(uint256 swapAmount, bool zeroForOne, address recipient) internal {
         console.log("Starting Swap Phase. Amount:", swapAmount);
-        address tokenIn = zeroForOne ? WETH : USDC;
-        address tokenOut = zeroForOne ? USDC : WETH;
+        address tokenIn = zeroForOne ? ARB : USDC;
+        address tokenOut = zeroForOne ? USDC : ARB;
 
         IERC20(tokenIn).approve(address(ROUTER), swapAmount);
 
@@ -118,13 +118,13 @@ contract Reposition is Script {
     
     function _addLiquidity(int24 newTickLower, int24 newTickUpper, address recipient) internal returns (uint256) {
         console.log("Starting Add Liquidity...");
-        uint256 bal0 = IERC20(WETH).balanceOf(recipient);
+        uint256 bal0 = IERC20(ARB).balanceOf(recipient);
         uint256 bal1 = IERC20(USDC).balanceOf(recipient);
 
         // 💡 [修正ポイント] STF対策：シミュレーションとのズレを吸収するため、
         // 実際の残高の「99.5%」を投入希望額（Desired）として設定する
-        uint256 desired0 = (bal0 * 995) / 1000;
-        uint256 desired1 = (bal1 * 995) / 1000;
+        uint256 desired0 = (bal0 * 997) / 1000;
+        uint256 desired1 = (bal1 * 997) / 1000;
 
         // Approveは実際の残高の全額を通しておく
         IERC20(WETH).approve(address(NFPM), bal0);
@@ -132,13 +132,13 @@ contract Reposition is Script {
 
         // 💡 amountDesired に bal ではなく desired を渡すように変更
         (uint256 newTokenId, , , ) = NFPM.mint(INonfungiblePositionManager.MintParams({
-            token0: WETH, token1: USDC, fee: POOL_FEE, tickLower: newTickLower, tickUpper: newTickUpper,
+            token0: ARB, token1: USDC, fee: POOL_FEE, tickLower: newTickLower, tickUpper: newTickUpper,
             amount0Desired: desired0, amount1Desired: desired1, amount0Min: 0, amount1Min: 0,
             recipient: recipient, deadline: block.timestamp + 300
         }));
         
         // ダストのApproveリセット処理
-        if (IERC20(WETH).allowance(recipient, address(NFPM)) > 0) IERC20(WETH).approve(address(NFPM), 0);
+        if (IERC20(WETH).allowance(recipient, address(NFPM)) > 0) IERC20(ARB).approve(address(NFPM), 0);
         if (IERC20(USDC).allowance(recipient, address(NFPM)) > 0) IERC20(USDC).approve(address(NFPM), 0);
 
         return newTokenId;
