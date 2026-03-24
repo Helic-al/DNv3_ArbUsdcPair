@@ -316,7 +316,9 @@ with col_main:
                 line=dict(color="#00CC96", width=2.5),
             )
         )
-        fig_combined_delta.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+        fig_combined_delta.add_hline(
+            y=0, line_dash="dash", line_color="gray", opacity=0.5
+        )
         fig_combined_delta.update_layout(
             barmode="group",
             margin=dict(l=20, r=20, t=30, b=20),
