@@ -18,6 +18,7 @@ class DynamicMACD:
         self.macd = None
         self.signal = None
         self.hist = 0.0
+        self.prevHist = 0.0
 
         self.count = 50
 
