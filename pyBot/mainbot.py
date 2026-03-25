@@ -859,17 +859,14 @@ class SafeRealBot:
             currentTime = time.time()
 
             # macdシグナルを確認
-            match macd.crossDetection():
-                case Cross.goldenCross:
-                    if net_delta < 0:
-                        adjustingFactor = 0.5
-
-                case Cross.deadCross:
-                    if net_delta > 0:
-                        adjustingFactor = 0.5
-
-                case Cross.noCross:
-                    adjustingFactor *= 0.9
+            if macd.crossDetection() == Cross.goldenCross:
+                if net_delta < 0:
+                    adjustingFactor = 0.5
+            elif macd.crossDetection() == Cross.deadCross:
+                if net_delta > 0:
+                    adjustingFactor = 0.5
+            else:
+                adjustingFactor *= 0.9
 
             # 本ループでのスレッショルドを計算
             arbThreshold = (1 - adjustingFactor) * self.ARBthreshold
