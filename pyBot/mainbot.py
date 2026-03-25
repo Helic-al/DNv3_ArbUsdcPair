@@ -9,6 +9,7 @@ import eth_account
 import requests
 from dotenv import load_dotenv
 from getSecret import get_secret_key
+from dynamicMACD import Cross, DynamicMACD
 
 # from hlOrder import HyperliquidOrderManager
 from hyperliquid.exchange import Exchange
@@ -772,11 +773,17 @@ class SafeRealBot:
 
         emaPrice = LowPassFilter(alpha=0.016)
 
+        macd = DynamicMACD()
+        adjustingFactor = 0.0
         # v6_3追加
         tracker = DeltaPnLTracker()
 
         while True:
             data = self.get_onchain_data()
+
+            cexPrice = self.get_cex_price()
+
+            macd.update(cexPrice)
 
             # データ取得失敗時などはスキップ
             if data is None:
@@ -851,7 +858,23 @@ class SafeRealBot:
             # クールタイム判定用の時刻を取得
             currentTime = time.time()
 
-            if abs(net_delta) > self.ARBthreshold:
+            # macdシグナルを確認
+            match macd.crossDetection():
+                case Cross.goldenCross:
+                    if net_delta < 0:
+                        adjustingFactor = 0.5
+
+                case Cross.deadCross:
+                    if net_delta > 0:
+                        adjustingFactor = 0.5
+
+                case Cross.noCross:
+                    adjustingFactor *= 0.9
+
+            # 本ループでのスレッショルドを計算
+            arbThreshold = (1 - adjustingFactor) * self.ARBthreshold
+
+            if abs(net_delta) > arbThreshold:
                 elapsedTime = currentTime - self.cooltime
 
                 if self.firstBreachTime is None:
@@ -893,8 +916,8 @@ class SafeRealBot:
 
             # v6_2 緊急脱出処理
             if (
-                abs(raw_net_delta) < 3.3 * self.ARBthreshold
-                and abs(raw_net_delta) > 1.5 * self.ARBthreshold
+                abs(raw_net_delta) < 3.3 * arbThreshold
+                and abs(raw_net_delta) > 1.5 * arbThreshold
                 and (not hasAlreadyTraded)
             ):
                 if self.BailoutBreachTime is None:
