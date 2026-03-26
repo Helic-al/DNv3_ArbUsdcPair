@@ -77,6 +77,9 @@ def load_data():
             "funding_fees",
             "step_pnl",
             "cum_pnl",
+            "macd",
+            "signal",
+            "hist",
         ]
 
         for col in cols_to_convert:
@@ -219,11 +222,12 @@ df_display = downsample(df_filtered)
 # --- 最新ステータス ---
 latest = df.iloc[-1]
 
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
 col_m1.metric("💰 総資産 (Total)", f"${latest['total_equity']:,.2f}")
 col_m2.metric("📊 Net Delta", f"{latest['net_delta']:.4f} ARB")
 col_m3.metric("📈 ARB Price", f"${latest['arb_price']:,.4f}")
 col_m4.metric("💵 Cum PnL", f"${latest['cum_pnl']:,.2f}")
+col_m5.metric("📉 MACD Hist", f"{latest['hist']:.6f}")
 
 # リバランス検出情報表示
 if rebalance_indices:
@@ -239,21 +243,22 @@ if rebalance_indices:
 col_main, col_logs = st.columns([2, 1])
 
 with col_main:
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "📈 資産推移",
             "⚖️ デルタ分析",
             "💹 PnL分析",
-            "📊 統計サマリー",
+            "� MACD分析",
+            "�📊 統計サマリー",
             "🔄 リバランス履歴",
         ]
     )
 
     # ============ TAB 1: 資産推移 ============
     with tab1:
-        # --- Total Equity のみをプロット (Y軸スケールをデータ範囲に合わせる) ---
-        st.subheader("Total Equity 推移")
-        fig_equity = go.Figure()
+        # --- Total Equity + ARB Price (2軸) ---
+        st.subheader("Total Equity 推移 & ARB Price")
+        fig_equity = make_subplots(specs=[[{"secondary_y": True}]])
         fig_equity.add_trace(
             go.Scatter(
                 x=df_display["timestamp"],
@@ -261,7 +266,18 @@ with col_main:
                 mode="lines",
                 name="Total Equity",
                 line=dict(color="#00CC96", width=2),
-            )
+            ),
+            secondary_y=False,
+        )
+        fig_equity.add_trace(
+            go.Scatter(
+                x=df_display["timestamp"],
+                y=df_display["arb_price"],
+                mode="lines",
+                name="ARB Price ($)",
+                line=dict(color="#FFA15A", width=1.5, dash="dot"),
+            ),
+            secondary_y=True,
         )
         # Y軸をデータの変動範囲に合わせて拡大表示
         eq_min = df_display["total_equity"].min()
@@ -271,11 +287,18 @@ with col_main:
             margin=dict(l=20, r=20, t=30, b=20),
             height=350,
             hovermode="x unified",
-            yaxis_title="USD",
-            yaxis=dict(range=[eq_min - eq_margin, eq_max + eq_margin]),
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
             ),
+        )
+        fig_equity.update_yaxes(
+            title_text="USD (Total Equity)",
+            range=[eq_min - eq_margin, eq_max + eq_margin],
+            secondary_y=False,
+        )
+        fig_equity.update_yaxes(
+            title_text="ARB Price ($)",
+            secondary_y=True,
         )
         st.plotly_chart(fig_equity, use_container_width=True)
 
@@ -479,8 +502,76 @@ with col_main:
         fig_step.update_yaxes(title_text="Cumulative PnL ($)", secondary_y=True)
         st.plotly_chart(fig_step, use_container_width=True)
 
-    # ============ TAB 4: 統計サマリー ============
+    # ============ TAB 4: MACD分析 ============
     with tab4:
+        st.subheader("MACD / Signal / Histogram")
+        fig_macd = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.6, 0.4],
+            subplot_titles=("MACD & Signal", "Histogram"),
+        )
+        # MACD線
+        fig_macd.add_trace(
+            go.Scatter(
+                x=df_display["timestamp"],
+                y=df_display["macd"],
+                mode="lines",
+                name="MACD",
+                line=dict(color="#636EFA", width=2),
+            ),
+            row=1,
+            col=1,
+        )
+        # Signal線
+        fig_macd.add_trace(
+            go.Scatter(
+                x=df_display["timestamp"],
+                y=df_display["signal"],
+                mode="lines",
+                name="Signal",
+                line=dict(color="#EF553B", width=1.5),
+            ),
+            row=1,
+            col=1,
+        )
+        # ゼロライン (MACD)
+        fig_macd.add_hline(
+            y=0, line_dash="dash", line_color="gray", opacity=0.4, row=1, col=1
+        )
+        # Histogram (棒グラフ、正=緑 / 負=赤)
+        hist_colors = [
+            "#00CC96" if v >= 0 else "#EF553B" for v in df_display["hist"]
+        ]
+        fig_macd.add_trace(
+            go.Bar(
+                x=df_display["timestamp"],
+                y=df_display["hist"],
+                name="Histogram",
+                marker_color=hist_colors,
+                opacity=0.8,
+            ),
+            row=2,
+            col=1,
+        )
+        # ゼロライン (Histogram)
+        fig_macd.add_hline(
+            y=0, line_dash="dash", line_color="gray", opacity=0.4, row=2, col=1
+        )
+        fig_macd.update_layout(
+            margin=dict(l=20, r=20, t=40, b=20),
+            height=500,
+            hovermode="x unified",
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+        )
+        st.plotly_chart(fig_macd, use_container_width=True)
+
+    # ============ TAB 5: 統計サマリー ============
+    with tab5:
         st.subheader("📊 パフォーマンスサマリー")
 
         stats = calc_performance_stats(df_filtered)
@@ -538,8 +629,8 @@ with col_main:
         }
         st.table(pd.DataFrame(latest_data))
 
-    # ============ TAB 5: リバランス履歴 ============
-    with tab5:
+    # ============ TAB 6: リバランス履歴 ============
+    with tab6:
         st.subheader("🔄 リバランスイベント一覧")
 
         if rebalance_indices:
