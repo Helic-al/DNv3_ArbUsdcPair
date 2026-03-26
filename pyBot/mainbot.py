@@ -483,10 +483,6 @@ class SafeRealBot:
             # total_equity = uni_value_usd + hl_value_usd
 
             try:
-                # ① 生のarb残高 (ガス代用など / 18 decimals)
-                arb_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
-                arb_wallet = arb_wei / (10**18)
-
                 # ② Warb残高 (18 decimals)
                 arb_contract = self.w3.eth.contract(address=ARB_ADDRESS, abi=ERC20_ABI)
                 arb_wei = arb_contract.functions.balanceOf(MAIN_ACCOUNT_ADDRESS).call()
@@ -530,18 +526,6 @@ class SafeRealBot:
         except Exception as e:
             log.info(f"Equity Calc Error: {e}")
             return None
-
-    def getWalletarb(self):
-        try:
-            # ① 生のarb残高 (ガス代用など / 18 decimals)
-            arb_wei = self.w3.eth.get_balance(MAIN_ACCOUNT_ADDRESS)
-            arb_wallet = arb_wei / (10**18)
-
-            return arb_wallet
-
-        except Exception as e:
-            log.error(f"ウォレット残高の取得に失敗しました: {e}")
-            return 0
 
     def getWalletArbAndUsdc(self):
         try:
@@ -701,6 +685,9 @@ class SafeRealBot:
                 "lp_delta": format_decimal(equity_data.get("lp_delta", 0)),
                 "net_delta": format_decimal(equity_data.get("net_delta", 0)),
                 "raw_net_delta": format_decimal(equity_data.get("raw_net_delta", 0)),
+                "macd": format_decimal(equity_data.get("macd", 0)),
+                "signal": format_decimal(equity_data.get("signal", 0)),
+                "hist": format_decimal(equity_data.get("hist", 0)),
             }
 
             # 送信！
@@ -838,7 +825,7 @@ class SafeRealBot:
             raw_lp_delra_arb = raw_amount0_wei / DECIMALS_arb
 
             # 追加:walletのarb残高もヘッジする
-            walletarb = self.getWalletarb()
+            walletarb, walletusdc = self.getWalletArbAndUsdc()
 
             # ネットデルタ (LPのarb + ヘッジのarb + walletのarb)
             net_delta = lp_delta_arb + data["hedge_pos"] + walletarb
@@ -998,6 +985,9 @@ class SafeRealBot:
                     equity["raw_net_delta"] = raw_net_delta
                     equity["step_pnl"] = step_pnl
                     equity["cum_pnl"] = cum_pnl
+                    equity["macd"] = macd.macd
+                    equity["signal"] = macd.signal
+                    equity["hist"] = macd.hist
                     self.save_to_dynamodb(equity)
                     last_log_time = now
             time.sleep(20)

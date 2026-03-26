@@ -58,3 +58,39 @@ class DynamicMACD:
 
         else:
             return int(Cross.noCross)
+
+    @property
+    def emaShort(self):
+        """The  property."""
+        if self.emashort:
+            return self.emaShort
+        else:
+            return 0.0
+
+    @property
+    def emaLong(self):
+        if self.emaLong:
+            return self.emaShort
+        else:
+            return 0.0
+
+    @property
+    def macd(self):
+        if self.macd:
+            return self.macd
+        else:
+            return 0.0
+
+    @property
+    def signal(self):
+        if self.signal:
+            return self.signal
+        else:
+            return 0.0
+
+    @property
+    def hist(self):
+        if self.hist:
+            return self.hist
+        else:
+            return 0.0
