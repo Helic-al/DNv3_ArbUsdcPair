@@ -47,14 +47,14 @@ class DynamicMACD:
         self._hist = self.macd - self.signal
 
         # カウントの更新、最初の50レコードはクロス判定しない
-        self._count = self.count - 1 if self.count > 0 else 0
+        self._count = self._count - 1 if self._count > 0 else 0
 
     def crossDetection(self):
-        if self._prevHist <= 0 and self.hist > 0 and self.count <= 0:
+        if self._prevHist <= 0 and self.hist > 0 and self._count <= 0:
             # ゴールデンクロス
             return int(Cross.goldenCross)
 
-        elif self._prevHist >= 0 and self.hist < 0 and self.count <= 0:
+        elif self._prevHist >= 0 and self.hist < 0 and self._count <= 0:
             # デッドクロス
             return int(Cross.deadCross)
 
