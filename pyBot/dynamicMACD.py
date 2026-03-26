@@ -42,7 +42,7 @@ class DynamicMACD:
         # MACD, signal
         self._macd = self._emaShort - self._emaLong
         self._signal = (
-            self.signalAlpha * self.macd + (1 - self.signalAlpha) * self.signal
+            self._signalAlpha * self.macd + (1 - self._signalAlpha) * self.signal
         )
         self._hist = self.macd - self.signal
 
