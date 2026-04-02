@@ -32,7 +32,7 @@ HL_PRIVATE_KEY = os.environ.get("HL_PRIVATE_KEY")
 MAIN_ACCOUNT_ADDRESS = os.environ.get("ARB_WALLET_ADDRESS")
 ARB_SECRET = get_secret_key()
 
-alchemyKey = os.environ.get("ALCHEMY_KEY")  # 秘密鍵
+# alchemyKey = os.environ.get("ALCHEMY_KEY")  # 秘密鍵
 TARGET_TOKEN_ID = int(
     os.environ.get("NFT_TOKEN", 0)
 )  # ★ここにUniswapのToken IDを入れる
@@ -45,7 +45,7 @@ AWS_ACCESS_KEY = os.environ.get("AWS_KEY")
 AWS_SECRET_KEY = os.environ.get("AWS_SECRET")
 REGION_NAME = "ap-northeast-1"
 # --- インフラ設定 ---
-RPC_URL = os.environ.get("ALCHEMY_RPC_URL")
+RPC_URL = os.environ.get("INFURA_RPC_URL")
 HL_BASE_URL = constants.MAINNET_API_URL
 
 ARB_ADDRESS = "0x912CE59144191C1204E64559FE8253a0e49E6548"  # arbアドレスに差し替え
