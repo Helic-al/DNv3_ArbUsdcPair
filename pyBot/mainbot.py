@@ -36,7 +36,7 @@ ARB_SECRET = get_secret_key()
 TARGET_TOKEN_ID = int(
     os.environ.get("NFT_TOKEN", 0)
 )  # ★ここにUniswapのToken IDを入れる
-THRESHOLD = 3500  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる # TODO: ARB用にサイズを書き換える
+THRESHOLD = 8000  # 初期リバランス閾値、dynamoDBの初回記録まではこの値を用いる # TODO: ARB用にサイズを書き換える
 ALLOWABLE_RISK_PCT = 0.150  # 運用資金から許容するズレ(デルタarb)の割合
 RECORD_TIME = 300  # dynamoDBへの記録間隔(秒)
 
